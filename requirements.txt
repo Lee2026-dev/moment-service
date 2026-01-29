@@ -4,6 +4,7 @@ pytest
 python-dotenv
 supabase
 langchain
+langchain-core
 langchain-openai
 httpx
 email-validator
