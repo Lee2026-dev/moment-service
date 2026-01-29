@@ -30,7 +30,9 @@ def verify_deployment(base_url):
             print(f"❌ Failed: {e}")
 
         print("\n3️⃣  Running Smoke Test (Auth + AI)...")
-        email = f"verify_{uuid.uuid4().hex[:8]}@example.com"
+        # Use a non-reserved domain as Supabase/GoTrue often rejects @example.com 
+        # due to lack of MX records.
+        email = f"verify_{uuid.uuid4().hex[:8]}@moment-test.com"
         password = "testpassword123"
         
         try:

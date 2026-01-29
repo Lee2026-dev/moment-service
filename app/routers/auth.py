@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from supabase import Client
+from supabase import Client, AuthApiError
 from app.dependencies import get_supabase
 from app.schemas import UserRegister, UserLogin, Token, UserProfile
 
@@ -14,6 +14,12 @@ def register(user: UserRegister, supabase: Client = Depends(get_supabase)):
         if not res.user:
              raise HTTPException(status_code=400, detail="Registration failed")
         return {"message": "User created successfully"}
+    except AuthApiError as e:
+        # Map Supabase errors to meaningful API responses
+        detail = str(e)
+        if "invalid" in detail.lower() and "email" in detail.lower():
+            detail = "The email address provided is invalid or restricted. Please use a different email domain."
+        raise HTTPException(status_code=e.status, detail=detail)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -27,6 +33,8 @@ def login(user: UserLogin, supabase: Client = Depends(get_supabase)):
             access_token=res.session.access_token,
             refresh_token=res.session.refresh_token
         )
+    except AuthApiError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -35,10 +43,10 @@ def get_me(credentials: HTTPAuthorizationCredentials = Depends(security), supaba
     token = credentials.credentials
     try:
         res = supabase.auth.get_user(token)
-        user = res.user
-        if not user:
+        if not res or not res.user:
             raise HTTPException(status_code=401, detail="Invalid token")
         
+        user = res.user
         if not user.email:
              raise HTTPException(status_code=400, detail="User has no email")
 
@@ -47,5 +55,7 @@ def get_me(credentials: HTTPAuthorizationCredentials = Depends(security), supaba
             email=user.email,
             created_at=user.created_at
         )
+    except AuthApiError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=401, detail=str(e))
