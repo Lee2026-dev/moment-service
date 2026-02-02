@@ -56,6 +56,17 @@ def get_me(credentials: HTTPAuthorizationCredentials = Depends(security), supaba
             created_at=user.created_at
         )
     except AuthApiError as e:
-        raise HTTPException(status_code=e.status, detail=str(e))
+        # Check for expired/invalid token in AuthApiError
+        # Force 401 if it looks like an auth failure, regardless of what Supabase says (sometimes 400 or 403)
+        error_msg = str(e).lower()
+        status_code = e.status
+        if "expired" in error_msg or "invalid" in error_msg:
+             status_code = 401
+        raise HTTPException(status_code=status_code, detail=str(e))
     except Exception as e:
+        error_msg = str(e).lower()
+        # Force 401 for any auth-looking error
+        if "expired" in error_msg or "invalid" in error_msg or "malformed" in error_msg:
+             raise HTTPException(status_code=401, detail=str(e))
+        # Default to 401 for unknown auth errors instead of 403, to ensure client logs out
         raise HTTPException(status_code=401, detail=str(e))

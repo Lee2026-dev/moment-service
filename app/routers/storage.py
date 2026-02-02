@@ -14,6 +14,7 @@ def create_presigned_url(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     supabase: Client = Depends(get_supabase)
 ):
+    print("received request...", req)
     token = credentials.credentials
     try:
         user_res = supabase.auth.get_user(token)
