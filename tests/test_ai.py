@@ -79,3 +79,43 @@ def test_summarize_fallback(client, mock_supabase):
             assert MockChatOpenAI.call_count >= 2
             assert MockChatOpenAI.call_args_list[0][1]["model"] == "deepseek/deepseek-r1:free"
             assert MockChatOpenAI.call_args_list[1][1]["model"] == "google/gemini-2.0-flash-lite-preview-02-05:free"
+
+@pytest.mark.asyncio
+async def test_start_transcription_job_success():
+    from app.services.ai import start_transcription_job, JOBS
+    job_id = "test-job"
+    audio_key = "test.m4a"
+    
+    with patch("app.services.ai.get_supabase") as mock_get_supabase, \
+         patch("app.services.ai.genai") as mock_genai, \
+         patch("tempfile.NamedTemporaryFile") as mock_temp, \
+         patch("os.remove") as mock_remove, \
+         patch("os.path.exists", return_value=True):
+        
+        # Mock Supabase Storage
+        mock_supabase = MagicMock()
+        mock_get_supabase.return_value = mock_supabase
+        mock_supabase.storage.from_.return_value.download.return_value = b"fake audio data"
+        
+        # Mock Temp File
+        mock_temp_file = MagicMock()
+        mock_temp_file.name = "/tmp/test.m4a"
+        mock_temp.return_value.__enter__.return_value = mock_temp_file
+        
+        # Mock Gemini
+        mock_model = MagicMock()
+        mock_genai.GenerativeModel.return_value = mock_model
+        mock_file = MagicMock()
+        mock_file.state.name = "ACTIVE"
+        mock_genai.upload_file.return_value = mock_file
+        
+        mock_response = MagicMock()
+        mock_response.text = "Transcribed text"
+        mock_model.generate_content.return_value = mock_response
+        
+        await start_transcription_job(job_id, audio_key, "en")
+        
+        assert JOBS[job_id]["status"] == "completed"
+        assert JOBS[job_id]["result"] == "Transcribed text"
+        mock_genai.configure.assert_called()
+        mock_model.generate_content.assert_called()

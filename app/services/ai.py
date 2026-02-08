@@ -2,6 +2,10 @@ from langchain_openai import ChatOpenAI
 from langchain_core.prompts import PromptTemplate
 from langchain_core.messages import HumanMessage
 import os
+import google.generativeai as genai
+from app.dependencies import get_supabase
+import tempfile
+import asyncio
 
 # Fallback models configuration
 from pydantic import SecretStr
@@ -11,6 +15,8 @@ MODELS = [
     "google/gemini-2.0-flash-lite-preview-02-05:free",
     "meta-llama/llama-3.3-70b-instruct:free",
 ]
+
+JOBS = {}
 
 def get_llm(model_name: str):
     """Factory to create LLM instance for a specific model"""
@@ -77,7 +83,56 @@ def _generate_summary_attempt(text: str, model: str) -> dict:
         }
 
 async def start_transcription_job(job_id: str, audio_file_key: str, language: str):
-    print(f"Starting transcription for {job_id}, file: {audio_file_key}")
-    import asyncio
-    await asyncio.sleep(1)
-    print(f"Finished transcription for {job_id}")
+    JOBS[job_id] = {"status": "processing", "result": None}
+    try:
+        print(f"Starting transcription for {job_id}, file: {audio_file_key}")
+        supabase = get_supabase()
+        
+        # 1. Download audio file from Supabase storage
+        bucket_name = "media"
+        data = supabase.storage.from_(bucket_name).download(audio_file_key)
+        
+        # 2. Save to temporary file
+        suffix = os.path.splitext(audio_file_key)[1] or ".m4a"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp.write(data)
+            tmp_path = tmp.name
+
+        try:
+            # 3. Transcribe with Gemini
+            api_key = os.environ.get("GEMINI_API_KEY")
+            if not api_key:
+                 raise ValueError("GEMINI_API_KEY environment variable not set")
+            
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel("gemini-1.5-flash")
+            
+            print(f"Uploading to Gemini: {tmp_path}")
+            audio_file = genai.upload_file(path=tmp_path)
+            
+            # Wait for the file to be processed if it's large
+            import time
+            while audio_file.state.name == "PROCESSING":
+                print(".", end="", flush=True)
+                time.sleep(2)
+                audio_file = genai.get_file(audio_file.name)
+            
+            if audio_file.state.name == "FAILED":
+                raise Exception("Audio file processing failed on Gemini")
+
+            print(f"Generating transcription for {job_id}...")
+            prompt = f"Please transcribe this audio accurately. Language: {language if language else 'auto detections'}."
+            response = model.generate_content([prompt, audio_file])
+            
+            JOBS[job_id]["status"] = "completed"
+            JOBS[job_id]["result"] = response.text
+            print(f"Finished transcription for {job_id}")
+
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+    
+    except Exception as e:
+        print(f"Transcription failed for {job_id}: {e}")
+        JOBS[job_id]["status"] = "failed"
+        JOBS[job_id]["result"] = str(e)

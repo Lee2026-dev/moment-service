@@ -3,13 +3,13 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from supabase import Client
 from app.dependencies import get_supabase
 from app.schemas import TranscribeRequest, JobResponse, JobStatusResponse, SummarizeRequest, SummarizeResponse
-from app.services.ai import start_transcription_job, generate_summary
+from app.services.ai import start_transcription_job, generate_summary, JOBS
 import uuid
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 security = HTTPBearer()
 
-JOBS = {}
+
 
 @router.post("/transcribe", response_model=JobResponse)
 def transcribe(

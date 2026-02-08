@@ -8,3 +8,4 @@ langchain-core
 langchain-openai
 httpx
 email-validator
+google-generativeai
