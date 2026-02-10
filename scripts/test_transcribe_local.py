@@ -16,6 +16,7 @@ async def test_local_transcription(audio_path, language="en"):
     """
     load_dotenv()
     api_key = os.environ.get("GEMINI_API_KEY")
+    print(f"api_key: {api_key}")
     if not api_key:
         print("Error: GEMINI_API_KEY not found in environment.")
         return

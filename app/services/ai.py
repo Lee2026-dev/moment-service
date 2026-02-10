@@ -11,6 +11,7 @@ import asyncio
 from pydantic import SecretStr
 
 MODELS = [
+    "deepseek/deepseek-r1-0528:free",
     "deepseek/deepseek-r1:free",
     "google/gemini-2.0-flash-lite-preview-02-05:free",
     "meta-llama/llama-3.3-70b-instruct:free",
@@ -55,7 +56,21 @@ def _generate_summary_attempt(text: str, model: str) -> dict:
     llm = get_llm(model)
     
     prompt = PromptTemplate.from_template(
-        "Summarize the following text and suggest a short title.\n\nText: {text}\n\nReturn JSON with keys 'summary' and 'suggested_title'."
+        """You are an expert note-taker. Your task is to process the following transcript into a well-structured note.
+        
+        Transcript: 
+        {text}
+        
+        Instructions:
+        1. Create a clear, concise SUMMARY of the main topic.
+        2. Extract KEY POINTS using bullet points.
+        3. Identify any ACTION ITEMS or tasks mentioned (if any).
+        4. Suggest a short, relevant title (max 6 words).
+        
+        Format your response as a JSON object with two keys:
+        - "summary": A single string containing the full markdown-formatted note content (use headers like ## Summary, ## Key Points).
+        - "suggested_title": The short title you generated.
+        """
     )
     
     messages = [HumanMessage(content=prompt.format(text=text))]
@@ -72,11 +87,14 @@ def _generate_summary_attempt(text: str, model: str) -> dict:
             content = content.split("```")[1].split("```")[0].strip()
             
         data = json.loads(content)
-        return {
+        result = {
             "summary": data.get("summary", ""),
             "suggested_title": data.get("suggested_title", "")
         }
+        print(f"✓ Successfully generated summary using model: {model}")
+        return result
     except json.JSONDecodeError:
+        print(f"✓ Generated summary using model: {model} (fallback format)")
         return {
             "summary": content[:200] + "..." if len(content) > 200 else content,
             "suggested_title": "Untitled"
