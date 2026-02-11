@@ -8,7 +8,7 @@ load_dotenv()
 from app.services.ai import generate_summary
 
 def test_real_summary():
-    print("Testing AI Summary with OpenRouter...")
+    print("Testing AI Summary with Google GenAI...")
     text = """
     Artificial Intelligence (AI) is intelligence demonstrated by machines, as opposed to the natural intelligence displayed by humans or animals. 
     Leading AI textbooks define the field as the study of "intelligent agents": any system that perceives its environment and takes actions that maximize its chance of achieving its goals. 
@@ -23,7 +23,7 @@ def test_real_summary():
     except Exception as e:
         print("\n--- Failed ---")
         print(f"Error: {e}")
-        print("Check your OPENROUTER_API_KEY in .env file.")
+        print("Check your GEMINI_API_KEY in .env file.")
 
 if __name__ == "__main__":
     test_real_summary()

@@ -1,38 +1,29 @@
-from langchain_openai import ChatOpenAI
-from langchain_core.prompts import PromptTemplate
-from langchain_core.messages import HumanMessage
+from google import genai
+from google.genai import types
 import os
-import google.generativeai as genai
 from app.dependencies import get_supabase
 import tempfile
 import asyncio
+import json
 
 # Fallback models configuration
-from pydantic import SecretStr
-
 MODELS = [
-    "deepseek/deepseek-r1-0528:free",
-    "deepseek/deepseek-r1:free",
-    "google/gemini-2.0-flash-lite-preview-02-05:free",
-    "meta-llama/llama-3.3-70b-instruct:free",
+    "gemini-2.0-flash",
+    "gemini-2.5-flash",
+    "gemini-3-flash-preview",
+    
 ]
 
 JOBS = {}
 
-def get_llm(model_name: str):
-    """Factory to create LLM instance for a specific model"""
-    api_key = os.environ.get("OPENROUTER_API_KEY")
-    base_url = "https://openrouter.ai/api/v1"
+def get_google_client():
+    """Factory to create Google GenAI Client"""
+    api_key = os.environ.get("GEMINI_API_KEY")
     
     if not api_key:
-        raise ValueError("OPENROUTER_API_KEY not set")
+        raise ValueError("GEMINI_API_KEY not set")
 
-    return ChatOpenAI(
-        model=model_name,
-        api_key=SecretStr(api_key),
-        base_url=base_url,
-        max_retries=1
-    )
+    return genai.Client(api_key=api_key)
 
 def generate_summary(text: str) -> dict:
     """Try models in sequence until one succeeds"""
@@ -53,40 +44,49 @@ def generate_summary(text: str) -> dict:
     raise Exception("No models available")
 
 def _generate_summary_attempt(text: str, model: str) -> dict:
-    llm = get_llm(model)
+    client = get_google_client()
     
-    prompt = PromptTemplate.from_template(
-        """You are an expert note-taker. Your task is to process the following transcript into a well-structured note.
-        
-        Transcript: 
-        {text}
-        
-        Instructions:
-        1. Create a clear, concise SUMMARY of the main topic.
-        2. Extract KEY POINTS using bullet points.
-        3. Identify any ACTION ITEMS or tasks mentioned (if any).
-        4. Suggest a short, relevant title (max 6 words).
-        
-        Format your response as a JSON object with two keys:
-        - "summary": A single string containing the full markdown-formatted note content (use headers like ## Summary, ## Key Points).
-        - "suggested_title": The short title you generated.
-        """
+    prompt = f"""You are an expert note-taker. Your task is to process the following transcript into a well-structured note.
+    
+    Transcript: 
+    {text}
+    
+    Instructions:
+    1. Create a clear, concise SUMMARY of the main topic.
+    2. Extract KEY POINTS using bullet points.
+    3. Identify any ACTION ITEMS or tasks mentioned (if any).
+    4. Suggest a short, relevant title (max 6 words).
+    
+    Format your response as a JSON object with two keys:
+    - "summary": A single string containing the full markdown-formatted note content (use headers like ## Summary, ## Key Points).
+    - "suggested_title": The short title you generated.
+    """
+    print(f"text:::{text}")
+    response = client.models.generate_content(
+        model=model,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema={
+                "type": "OBJECT",
+                "properties": {
+                    "summary": {"type": "STRING"},
+                    "suggested_title": {"type": "STRING"}
+                }
+            }
+        )
     )
     
-    messages = [HumanMessage(content=prompt.format(text=text))]
-    response = llm.invoke(messages)
-    
-    content = str(response.content)
-    import json
-    
     try:
-        # Clean potential markdown code blocks
-        if "```json" in content:
-            content = content.split("```json")[1].split("```")[0].strip()
-        elif "```" in content:
-            content = content.split("```")[1].split("```")[0].strip()
-            
+        # The SDK with response_mime_type="application/json" returns a parsed object in parsed causing issues?
+        # Actually response.text should be the JSON string.
+        # But let's check if response.parsed is available or just use text.
+        # For safety with the new SDK, let's use text and json.loads or the parsed structure if we used Pydantic.
+        # We used raw JSON schema so response.text should be valid valid JSON.
+        
+        content = response.text
         data = json.loads(content)
+        
         result = {
             "summary": data.get("summary", ""),
             "suggested_title": data.get("suggested_title", "")
@@ -96,7 +96,7 @@ def _generate_summary_attempt(text: str, model: str) -> dict:
     except json.JSONDecodeError:
         print(f"✓ Generated summary using model: {model} (fallback format)")
         return {
-            "summary": content[:200] + "..." if len(content) > 200 else content,
+            "summary": response.text[:200] + "..." if len(response.text) > 200 else response.text,
             "suggested_title": "Untitled"
         }
 
@@ -117,30 +117,31 @@ async def start_transcription_job(job_id: str, audio_file_key: str, language: st
             tmp_path = tmp.name
 
         try:
-            # 3. Transcribe with Gemini
-            api_key = os.environ.get("GEMINI_API_KEY")
-            if not api_key:
-                 raise ValueError("GEMINI_API_KEY environment variable not set")
-            
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel("gemini-1.5-flash")
+            # 3. Transcribe with Google GenAI
+            client = get_google_client()
             
             print(f"Uploading to Gemini: {tmp_path}")
-            audio_file = genai.upload_file(path=tmp_path)
+            # The v1 (google.generativeai) used upload_file. 
+            # The v2 (google-genai) uses client.files.upload
+            audio_file = client.files.upload(path=tmp_path)
             
-            # Wait for the file to be processed if it's large
+            # Wait for processing
             import time
-            while audio_file.state.name == "PROCESSING":
+            while audio_file.state == "PROCESSING":
                 print(".", end="", flush=True)
                 time.sleep(2)
-                audio_file = genai.get_file(audio_file.name)
+                audio_file = client.files.get(name=audio_file.name)
             
-            if audio_file.state.name == "FAILED":
+            if audio_file.state == "FAILED":
                 raise Exception("Audio file processing failed on Gemini")
 
             print(f"Generating transcription for {job_id}...")
             prompt = f"Please transcribe this audio accurately. Language: {language if language else 'auto detections'}."
-            response = model.generate_content([prompt, audio_file])
+            
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=[prompt, audio_file]
+            )
             
             JOBS[job_id]["status"] = "completed"
             JOBS[job_id]["result"] = response.text

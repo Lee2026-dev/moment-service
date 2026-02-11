@@ -35,12 +35,14 @@ def test_summarize_success_first_try(client, mock_supabase):
     mock_user.id = "user-123"
     mock_supabase.auth.get_user.return_value = MagicMock(user=mock_user)
     
-    with patch("app.services.ai.ChatOpenAI") as MockChatOpenAI:
-        mock_llm = MagicMock()
-        mock_llm.invoke.return_value = MagicMock(content='{"summary": "Summary", "suggested_title": "Title"}')
-        MockChatOpenAI.return_value = mock_llm
+    with patch("app.services.ai.genai.Client") as MockClient:
+        mock_client_instance = MagicMock()
+        mock_response = MagicMock()
+        mock_response.text = '{"summary": "Summary", "suggested_title": "Title"}'
+        mock_client_instance.models.generate_content.return_value = mock_response
+        MockClient.return_value = mock_client_instance
         
-        with patch.dict("os.environ", {"OPENROUTER_API_KEY": "fake-key"}):
+        with patch.dict("os.environ", {"GEMINI_API_KEY": "fake-key"}):
             response = client.post(
                 "/ai/summarize",
                 json={"text": "Long text content..."},
@@ -50,23 +52,31 @@ def test_summarize_success_first_try(client, mock_supabase):
             assert response.status_code == 200
             assert response.json()["summary"] == "Summary"
             
-            assert MockChatOpenAI.call_args[1]["model"] == "deepseek/deepseek-r1:free"
+            # Verify call arguments
+            call_args = mock_client_instance.models.generate_content.call_args
+            assert call_args.kwargs["model"] == "gemini-2.0-flash"
 
 def test_summarize_fallback(client, mock_supabase):
     mock_user = MagicMock()
     mock_user.id = "user-123"
     mock_supabase.auth.get_user.return_value = MagicMock(user=mock_user)
     
-    with patch("app.services.ai.ChatOpenAI") as MockChatOpenAI:
-        mock_llm_fail = MagicMock()
-        mock_llm_fail.invoke.side_effect = Exception("Rate limit")
+    with patch("app.services.ai.genai.Client") as MockClient:
+        mock_client_instance = MagicMock()
         
-        mock_llm_success = MagicMock()
-        mock_llm_success.invoke.return_value = MagicMock(content='{"summary": "Fallback Summary", "suggested_title": "Title"}')
+        # Setup side effects for generate_content
+        # First call fails, second succeeds
+        mock_response_success = MagicMock()
+        mock_response_success.text = '{"summary": "Fallback Summary", "suggested_title": "Title"}'
         
-        MockChatOpenAI.side_effect = [mock_llm_fail, mock_llm_success, mock_llm_fail]
+        mock_client_instance.models.generate_content.side_effect = [
+            Exception("Rate limit"),
+            mock_response_success
+        ]
         
-        with patch.dict("os.environ", {"OPENROUTER_API_KEY": "fake-key"}):
+        MockClient.return_value = mock_client_instance
+        
+        with patch.dict("os.environ", {"GEMINI_API_KEY": "fake-key"}):
             response = client.post(
                 "/ai/summarize",
                 json={"text": "Long text content..."},
@@ -76,9 +86,12 @@ def test_summarize_fallback(client, mock_supabase):
             assert response.status_code == 200
             assert response.json()["summary"] == "Fallback Summary"
             
-            assert MockChatOpenAI.call_count >= 2
-            assert MockChatOpenAI.call_args_list[0][1]["model"] == "deepseek/deepseek-r1:free"
-            assert MockChatOpenAI.call_args_list[1][1]["model"] == "google/gemini-2.0-flash-lite-preview-02-05:free"
+            assert mock_client_instance.models.generate_content.call_count == 2
+            
+            # Check models used
+            calls = mock_client_instance.models.generate_content.call_args_list
+            assert calls[0].kwargs["model"] == "gemini-2.0-flash"
+            assert calls[1].kwargs["model"] == "gemini-2.0-flash-lite"
 
 @pytest.mark.asyncio
 async def test_start_transcription_job_success():
@@ -87,7 +100,7 @@ async def test_start_transcription_job_success():
     audio_key = "test.m4a"
     
     with patch("app.services.ai.get_supabase") as mock_get_supabase, \
-         patch("app.services.ai.genai") as mock_genai, \
+         patch("app.services.ai.genai.Client") as MockClient, \
          patch("tempfile.NamedTemporaryFile") as mock_temp, \
          patch("os.remove") as mock_remove, \
          patch("os.path.exists", return_value=True):
@@ -102,20 +115,28 @@ async def test_start_transcription_job_success():
         mock_temp_file.name = "/tmp/test.m4a"
         mock_temp.return_value.__enter__.return_value = mock_temp_file
         
-        # Mock Gemini
-        mock_model = MagicMock()
-        mock_genai.GenerativeModel.return_value = mock_model
-        mock_file = MagicMock()
-        mock_file.state.name = "ACTIVE"
-        mock_genai.upload_file.return_value = mock_file
+        # Mock Gemini Client
+        mock_client_instance = MagicMock()
+        MockClient.return_value = mock_client_instance
         
+        # Mock File Upload
+        mock_file = MagicMock()
+        mock_file.name = "files/123"
+        mock_file.state = "ACTIVE"
+        mock_client_instance.files.upload.return_value = mock_file
+        mock_client_instance.files.get.return_value = mock_file
+        
+        # Mock Generate Content
         mock_response = MagicMock()
         mock_response.text = "Transcribed text"
-        mock_model.generate_content.return_value = mock_response
+        mock_client_instance.models.generate_content.return_value = mock_response
         
-        await start_transcription_job(job_id, audio_key, "en")
+        # Set Env
+        with patch.dict("os.environ", {"GEMINI_API_KEY": "fake-key"}):
+            await start_transcription_job(job_id, audio_key, "en")
         
         assert JOBS[job_id]["status"] == "completed"
         assert JOBS[job_id]["result"] == "Transcribed text"
-        mock_genai.configure.assert_called()
-        mock_model.generate_content.assert_called()
+        
+        mock_client_instance.files.upload.assert_called()
+        mock_client_instance.models.generate_content.assert_called()

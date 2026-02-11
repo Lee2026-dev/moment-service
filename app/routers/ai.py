@@ -77,4 +77,5 @@ def summarize(
         )
 
     except Exception as e:
+        print(e)
         raise HTTPException(status_code=400, detail=str(e))
