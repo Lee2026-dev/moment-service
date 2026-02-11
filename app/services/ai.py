@@ -8,9 +8,9 @@ import json
 
 # Fallback models configuration
 MODELS = [
-    "gemini-2.0-flash",
-    "gemini-2.5-flash",
     "gemini-3-flash-preview",
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
     
 ]
 
@@ -48,18 +48,16 @@ def _generate_summary_attempt(text: str, model: str) -> dict:
     
     prompt = f"""You are an expert note-taker. Your task is to process the following transcript into a well-structured note.
     
-    Transcript: 
-    {text}
-    
-    Instructions:
-    1. Create a clear, concise SUMMARY of the main topic.
-    2. Extract KEY POINTS using bullet points.
-    3. Identify any ACTION ITEMS or tasks mentioned (if any).
-    4. Suggest a short, relevant title (max 6 words).
-    
-    Format your response as a JSON object with two keys:
-    - "summary": A single string containing the full markdown-formatted note content (use headers like ## Summary, ## Key Points).
-    - "suggested_title": The short title you generated.
+                I have a transcript of a voice note that may contain filler words, repetitions, and informal phrasing. Please provide a concise summary that includes:
+                The Core Message: A 1-2 sentence overview of the main topic.
+                Key Points: A bulleted list of the most important ideas or facts mentioned.
+                Next Steps: Any tasks or actions mentioned in the recording.
+                Please ignore '额,'  or any accidental repetitions. Keep the tone [Insert Tone: e.g., professional / casual / reflective].
+                
+                I want the final summary to be written entirely in Chinese.
+
+                Transcript: 
+                {text}
     """
     print(f"text:::{text}")
     response = client.models.generate_content(
