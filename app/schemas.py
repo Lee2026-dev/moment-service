@@ -61,6 +61,7 @@ class JobStatusResponse(BaseModel):
 
 class SummarizeRequest(BaseModel):
     text: str
+    format: str = "daily"
 
 
 class SummarizeResponse(BaseModel):

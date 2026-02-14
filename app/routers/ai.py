@@ -69,7 +69,7 @@ def summarize(
         if not user_res.user:
              raise HTTPException(status_code=401, detail="Invalid token")
         
-        result = generate_summary(req.text)
+        result = generate_summary(req.text, req.format)
         return SummarizeResponse(
             summary=result.get("summary", ""),
             suggested_title=result.get("suggested_title", "")

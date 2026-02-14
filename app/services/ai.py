@@ -25,14 +25,61 @@ def get_google_client():
 
     return genai.Client(api_key=api_key)
 
-def generate_summary(text: str) -> dict:
+PROMPT_TEMPLATES = {
+    "daily": """You are a helpful personal assistant. Your task is to process the following transcript into a daily journal entry.
+                Please provide a concise summary that includes:
+                - What happened today (Core Message)
+                - Key takeaways or thoughts (Key Points)
+                - Action items for tomorrow (Next Steps)
+                
+                Keep the tone reflective and casual.
+                I want the final summary to be written entirely in Chinese.
+                
+                Transcript:
+                {text}
+    """,
+    "meeting": """You are an expert secretary. Your task is to process the following transcript into a structured meeting minute.
+                Please provide a professional summary that includes:
+                - Meeting Goal (Core Message)
+                - Key Decisions & Discussion Points (Key Points)
+                - Action Items with assignees if mentioned (Next Steps)
+                
+                Keep the tone professional and objective.
+                I want the final summary to be written entirely in Chinese.
+                
+                Transcript:
+                {text}
+    """,
+    "bulletpoint": """You are a precise note-taker. Your task is to extract key information from the transcript.
+                Please provide a list of bullet points that capture the essence of the content.
+                - Use clear and concise language.
+                - Group related points together if possible.
+                
+                I want the final note to be written entirely in Chinese.
+                
+                Transcript:
+                {text}
+    """,
+    "todo": """You are a task manager. Your task is to extract all action items and tasks from the transcript.
+                Please provide a simple list of todo items.
+                - Start each item with a verb.
+                - If a deadline or person is mentioned, include it.
+                
+                I want the final list to be written entirely in Chinese.
+                
+                Transcript:
+                {text}
+    """
+}
+
+def generate_summary(text: str, format: str = "daily") -> dict:
     """Try models in sequence until one succeeds"""
     last_exception = None
     
     for model in MODELS:
         try:
-            print(f"Attempting summary with model: {model}")
-            return _generate_summary_attempt(text, model)
+            print(f"Attempting summary with model: {model}, format: {format}")
+            return _generate_summary_attempt(text, model, format)
         except Exception as e:
             print(f"Model {model} failed: {e}")
             last_exception = e
@@ -43,23 +90,16 @@ def generate_summary(text: str) -> dict:
         raise last_exception
     raise Exception("No models available")
 
-def _generate_summary_attempt(text: str, model: str) -> dict:
+def _generate_summary_attempt(text: str, model: str, format: str) -> dict:
     client = get_google_client()
     
-    prompt = f"""You are an expert note-taker. Your task is to process the following transcript into a well-structured note.
-    
-                I have a transcript of a voice note that may contain filler words, repetitions, and informal phrasing. Please provide a concise summary that includes:
-                The Core Message: A 1-2 sentence overview of the main topic.
-                Key Points: A bulleted list of the most important ideas or facts mentioned.
-                Next Steps: Any tasks or actions mentioned in the recording.
-                Please ignore '额,'  or any accidental repetitions. Keep the tone [Insert Tone: e.g., professional / casual / reflective].
-                
-                I want the final summary to be written entirely in Chinese.
+    # Select prompt based on format, default to daily if not found
+    prompt_template = PROMPT_TEMPLATES.get(format, PROMPT_TEMPLATES["daily"])
+    prompt = prompt_template.format(text=text)
 
-                Transcript: 
-                {text}
-    """
     print(f"text:::{text}")
+    print(f"using format: {format}")
+    
     response = client.models.generate_content(
         model=model,
         contents=prompt,
@@ -76,12 +116,6 @@ def _generate_summary_attempt(text: str, model: str) -> dict:
     )
     
     try:
-        # The SDK with response_mime_type="application/json" returns a parsed object in parsed causing issues?
-        # Actually response.text should be the JSON string.
-        # But let's check if response.parsed is available or just use text.
-        # For safety with the new SDK, let's use text and json.loads or the parsed structure if we used Pydantic.
-        # We used raw JSON schema so response.text should be valid valid JSON.
-        
         content = response.text
         data = json.loads(content)
         
