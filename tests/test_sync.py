@@ -155,3 +155,130 @@ def test_sync_note_images(client, mock_supabase):
                 break
     
     assert found, "note_images upsert not found in mock calls"
+
+
+def test_sync_skips_stale_note_update(client, mock_supabase):
+    mock_user = MagicMock()
+    mock_user.id = "user-123"
+    mock_supabase.auth.get_user.return_value = MagicMock(user=mock_user)
+
+    mock_query = MagicMock()
+    mock_supabase.table.return_value = mock_query
+    mock_query.select.return_value = mock_query
+    mock_query.eq.return_value = mock_query
+    mock_query.gt.return_value = mock_query
+    mock_query.limit.return_value = mock_query
+    mock_query.upsert.return_value = mock_query
+    mock_query.update.return_value = mock_query
+    mock_query.in_.return_value = mock_query
+
+    # 1st execute: stale-check query for note n1
+    # next executes: pull phase for notes/tags/todo_items
+    mock_query.execute.side_effect = [
+        MagicMock(data=[{"updated_at": "2026-02-14T12:00:00+00:00"}]),
+        MagicMock(data=[]),
+        MagicMock(data=[]),
+        MagicMock(data=[]),
+    ]
+
+    payload = {
+        "last_synced_at": "2026-02-14T00:00:00Z",
+        "changes": {
+            "notes": {
+                "created": [],
+                "updated": [
+                    {
+                        "id": "n1",
+                        "content": "stale local content",
+                        "updated_at": "2026-02-14T11:00:00+00:00",
+                    }
+                ],
+                "deleted": [],
+            }
+        },
+    }
+
+    response = client.post(
+        "/sync",
+        json=payload,
+        headers={"Authorization": "Bearer valid-token"}
+    )
+
+    assert response.status_code == 200
+
+    found_upsert_for_n1 = False
+    for call in mock_query.upsert.call_args_list:
+        args, _ = call
+        data_list = args[0]
+        if isinstance(data_list, list):
+            for row in data_list:
+                if row.get("id") == "n1":
+                    found_upsert_for_n1 = True
+                    break
+
+    assert not found_upsert_for_n1, "stale note update should be skipped"
+
+
+def test_sync_accepts_newer_note_update(client, mock_supabase):
+    mock_user = MagicMock()
+    mock_user.id = "user-123"
+    mock_supabase.auth.get_user.return_value = MagicMock(user=mock_user)
+
+    mock_query = MagicMock()
+    mock_supabase.table.return_value = mock_query
+    mock_query.select.return_value = mock_query
+    mock_query.eq.return_value = mock_query
+    mock_query.gt.return_value = mock_query
+    mock_query.limit.return_value = mock_query
+    mock_query.upsert.return_value = mock_query
+    mock_query.update.return_value = mock_query
+    mock_query.in_.return_value = mock_query
+
+    # 1st execute: stale-check query for note n1
+    # 2nd execute: upsert
+    # next executes: pull phase for notes/tags/todo_items
+    mock_query.execute.side_effect = [
+        MagicMock(data=[{"updated_at": "2026-02-14T11:00:00+00:00"}]),
+        MagicMock(data=[]),
+        MagicMock(data=[]),
+        MagicMock(data=[]),
+        MagicMock(data=[]),
+    ]
+
+    payload = {
+        "last_synced_at": "2026-02-14T00:00:00Z",
+        "changes": {
+            "notes": {
+                "created": [],
+                "updated": [
+                    {
+                        "id": "n1",
+                        "content": "new local content",
+                        "updated_at": "2026-02-14T12:00:00+00:00",
+                    }
+                ],
+                "deleted": [],
+            }
+        },
+    }
+
+    response = client.post(
+        "/sync",
+        json=payload,
+        headers={"Authorization": "Bearer valid-token"}
+    )
+
+    assert response.status_code == 200
+
+    found_upsert_for_n1 = False
+    for call in mock_query.upsert.call_args_list:
+        args, _ = call
+        data_list = args[0]
+        if isinstance(data_list, list):
+            for row in data_list:
+                if row.get("id") == "n1":
+                    found_upsert_for_n1 = True
+                    assert row["content"] == "new local content"
+                    break
+
+    assert found_upsert_for_n1, "newer note update should be upserted"

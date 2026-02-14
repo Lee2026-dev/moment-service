@@ -4,9 +4,58 @@ from supabase import Client
 from app.dependencies import get_supabase
 from app.schemas_sync import SyncRequest, SyncResponse, EntityChanges
 from datetime import datetime, timezone
+from typing import Any, Optional
 
 router = APIRouter(tags=["sync"])
 security = HTTPBearer()
+
+
+def parse_iso_datetime(value: Any) -> Optional[datetime]:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        normalized = value.replace("Z", "+00:00")
+        parsed = datetime.fromisoformat(normalized)
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed
+    except Exception:
+        return None
+
+
+def should_apply_updated_item(
+    supabase: Client,
+    entity_name: str,
+    user_id: str,
+    item_data: dict[str, Any]
+) -> bool:
+    item_id = item_data.get("id")
+    if not item_id:
+        return True
+
+    incoming_updated_at = parse_iso_datetime(item_data.get("updated_at"))
+    if incoming_updated_at is None:
+        return True
+
+    existing_res = (
+        supabase
+        .table(entity_name)
+        .select("updated_at")
+        .eq("id", item_id)
+        .eq("user_id", user_id)
+        .limit(1)
+        .execute()
+    )
+    existing_rows = existing_res.data or []
+    if not existing_rows:
+        return True
+
+    existing_updated_at = parse_iso_datetime(existing_rows[0].get("updated_at"))
+    if existing_updated_at is None:
+        return True
+
+    return incoming_updated_at >= existing_updated_at
+
 
 @router.post("/sync", response_model=SyncResponse)
 def sync_data(
@@ -36,11 +85,23 @@ def sync_data(
             changes = req.changes[entity_name]
             
             items_to_upsert = []
-            for item in changes.created + changes.updated:
+            for item in changes.created:
                 item_data = item.copy()
                 item_data["user_id"] = user.id
-                item_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+                if not item_data.get("updated_at"):
+                    item_data["updated_at"] = datetime.now(timezone.utc).isoformat()
                 items_to_upsert.append(item_data)
+
+            for item in changes.updated:
+                item_data = item.copy()
+                item_data["user_id"] = user.id
+                if not item_data.get("updated_at"):
+                    item_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+                if should_apply_updated_item(supabase, entity_name, user.id, item_data):
+                    items_to_upsert.append(item_data)
+                else:
+                    print(f"Skip stale update for {entity_name}:{item_data.get('id')}")
             
             if items_to_upsert:
                 supabase.table(entity_name).upsert(items_to_upsert).execute()
