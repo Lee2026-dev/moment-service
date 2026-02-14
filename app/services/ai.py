@@ -26,55 +26,113 @@ def get_google_client():
     return genai.Client(api_key=api_key)
 
 PROMPT_TEMPLATES = {
-    "daily": """You are a helpful personal assistant. Your task is to process the following transcript into a daily journal entry.
-                Please provide a concise summary that includes:
-                - What happened today (Core Message)
-                - Key takeaways or thoughts (Key Points)
-                - Action items for tomorrow (Next Steps)
-                
-                Keep the tone reflective and casual.
-                I want the final summary to be written entirely in Chinese.
-                
+    "daily": """You are a helpful personal assistant. Convert the transcript into a concise daily note.
+                Hard rules:
+                - Base everything only on the transcript. Do not invent facts.
+                - Keep only high-signal content. Remove filler and repeated content.
+                - Write summary and suggested_title entirely in Chinese.
+                - suggested_title must be specific (8-16 Chinese characters), not generic.
+
+                Summary format:
+                今日概览:
+                • ...
+
+                关键收获:
+                • ...
+
+                明日行动:
+                ○ ...
+
+                Formatting rules:
+                - Use '• ' for facts/reflections.
+                - Use '○ ' for concrete next actions.
+                - If no clear action exists, write: ○ 暂无明确行动项
+
                 Transcript:
                 {text}
     """,
-    "meeting": """You are an expert secretary. Your task is to process the following transcript into a structured meeting minute.
-                Please provide a professional summary that includes:
-                - Meeting Goal (Core Message)
-                - Key Decisions & Discussion Points (Key Points)
-                - Action Items with assignees if mentioned (Next Steps)
-                
-                Keep the tone professional and objective.
-                I want the final summary to be written entirely in Chinese.
-                
+    "meeting": """You are an expert meeting secretary. Convert the transcript into precise, decision-ready meeting minutes.
+                Hard rules:
+                - Base everything only on the transcript. Do not invent decisions, owners, or deadlines.
+                - Prioritize outcomes over raw conversation. Merge duplicates and remove chatter.
+                - Keep statements concrete: who/what/result/time.
+                - Write summary and suggested_title entirely in Chinese.
+                - suggested_title must be specific (8-16 Chinese characters), not generic.
+
+                Summary format:
+                会议目标:
+                • ...
+
+                关键结论与决策:
+                • ...
+
+                行动项:
+                ○ [负责人] 动作 + 预期结果 @YYYY-MM-DD
+
+                待确认事项:
+                • ...
+
+                Formatting rules:
+                - Use '• ' for decisions, conclusions, discussion outcomes, and risks.
+                - Use '○ ' only for actionable tasks.
+                - Keep each action item atomic (one line = one owner + one action).
+                - If owner is unknown, use '[待确认]'.
+                - Append '@YYYY-MM-DD' only when an exact date is explicitly mentioned.
+                - If there are no action items, write: ○ 暂无明确行动项
+
                 Transcript:
                 {text}
     """,
-    "bulletpoint": """You are a precise note-taker. Your task is to extract key information from the transcript.
-                Please provide a structured note that captures the essence of the content.
-                
-                Formatting Rules:
-                - Use the symbol '• ' for general bullet points or facts.
-                - Use the symbol '○ ' for actionable tasks or todos.
-                - If a date/deadline is mentioned for a task, format it as '@YYYY-MM-DD' at the end of the line.
-                - Group actionable items (○) and informational items (•) logically.
-                - Separate different groups with a blank line if needed.
-                
-                I want the final note to be written entirely in Chinese.
-                
+    "bulletpoint": """You are a precise note-taker. Convert the transcript into meaningful, high-density bullet notes.
+                Hard rules:
+                - Base everything only on the transcript. Do not invent facts.
+                - Keep only important information (decisions, metrics, blockers, commitments).
+                - Remove vague statements and duplicate points.
+                - Write summary and suggested_title entirely in Chinese.
+                - suggested_title must be specific (8-16 Chinese characters), not generic.
+
+                Summary format:
+                关键信息:
+                • ...
+
+                待办事项:
+                ○ ...
+
+                风险/阻塞:
+                • ...
+
+                Formatting rules:
+                - Use '• ' for facts, decisions, or non-action insights.
+                - Use '○ ' for actionable tasks only.
+                - Keep each bullet to one clear idea.
+                - Append '@YYYY-MM-DD' to a task only if an exact deadline is explicitly mentioned.
+                - If no tasks are found, write: ○ 暂无明确行动项
+                - Omit '风险/阻塞' section when none are mentioned.
+
                 Transcript:
                 {text}
     """,
-    "todo": """You are a task manager. Your task is to extract all action items and tasks from the transcript.
-                Please provide a focused list of todo items.
-                
-                Formatting Rules:
-                - Use the symbol '○ ' for each task/action item.
-                - If a specific date or deadline is mentioned, append it exactly as '@YYYY-MM-DD'.
-                - If there are supporting details that are not tasks, you may use '• ' to list them below the relevant task or in a separate section.
-                
-                I want the final list to be written entirely in Chinese.
-                
+    "todo": """You are a task manager. Extract a precise and execution-ready TODO list from the transcript.
+                Hard rules:
+                - Include only actionable tasks. Do not include background narrative as tasks.
+                - Base everything only on the transcript. Do not invent owners, scope, or deadlines.
+                - Split compound actions into separate atomic tasks.
+                - Write summary and suggested_title entirely in Chinese.
+                - suggested_title must be specific (8-16 Chinese characters), not generic.
+
+                Summary format:
+                待办清单:
+                ○ [负责人] 动作 + 交付物 @YYYY-MM-DD
+                • 备注: (only if this note is critical for executing the task)
+
+                Formatting rules:
+                - Every task line must start with '○ '.
+                - Prefer verb-led tasks (e.g., "整理", "确认", "提交", "跟进", "发布").
+                - Use '[待确认]' if the owner is not explicitly mentioned.
+                - Append '@YYYY-MM-DD' only when an exact date is explicitly mentioned.
+                - Use '• 备注:' only for critical execution context, not general summary.
+                - If no actionable task exists, write: ○ 暂无明确行动项
+
                 Transcript:
                 {text}
     """
