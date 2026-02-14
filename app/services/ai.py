@@ -51,9 +51,14 @@ PROMPT_TEMPLATES = {
                 {text}
     """,
     "bulletpoint": """You are a precise note-taker. Your task is to extract key information from the transcript.
-                Please provide a list of bullet points that capture the essence of the content.
-                - Use clear and concise language.
-                - Group related points together if possible.
+                Please provide a structured note that captures the essence of the content.
+                
+                Formatting Rules:
+                - Use the symbol '• ' for general bullet points or facts.
+                - Use the symbol '○ ' for actionable tasks or todos.
+                - If a date/deadline is mentioned for a task, format it as '@YYYY-MM-DD' at the end of the line.
+                - Group actionable items (○) and informational items (•) logically.
+                - Separate different groups with a blank line if needed.
                 
                 I want the final note to be written entirely in Chinese.
                 
@@ -61,9 +66,12 @@ PROMPT_TEMPLATES = {
                 {text}
     """,
     "todo": """You are a task manager. Your task is to extract all action items and tasks from the transcript.
-                Please provide a simple list of todo items.
-                - Start each item with a verb.
-                - If a deadline or person is mentioned, include it.
+                Please provide a focused list of todo items.
+                
+                Formatting Rules:
+                - Use the symbol '○ ' for each task/action item.
+                - If a specific date or deadline is mentioned, append it exactly as '@YYYY-MM-DD'.
+                - If there are supporting details that are not tasks, you may use '• ' to list them below the relevant task or in a separate section.
                 
                 I want the final list to be written entirely in Chinese.
                 
