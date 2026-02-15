@@ -110,6 +110,11 @@ Push local changes and pull remote changes.
   }
   ```
 
+**Note fields for voice follow-ups**:
+- `parent_note_id` (optional UUID): links a follow-up voice note to its root parent note.
+- Include it in both push (`changes.notes.created/updated`) and pull payloads.
+- The backend normalizes nested follow-up chains to the root parent during `/sync`.
+
 ---
 
 ## Storage

@@ -61,6 +61,102 @@ def test_sync_push_changes(client, mock_supabase):
     assert upserted_data["content"] == "hello"
     assert upserted_data["user_id"] == "user-123"
 
+
+def test_sync_push_follow_up_parent_note_id(client, mock_supabase):
+    mock_user = MagicMock()
+    mock_user.id = "user-123"
+    mock_supabase.auth.get_user.return_value = MagicMock(user=mock_user)
+
+    mock_query = MagicMock()
+    mock_supabase.table.return_value = mock_query
+    mock_query.upsert.return_value = mock_query
+    mock_query.execute.return_value = MagicMock(data=[])
+
+    mock_query.select.return_value = mock_query
+    mock_query.eq.return_value = mock_query
+    mock_query.gt.return_value = mock_query
+    mock_query.execute.return_value = MagicMock(data=[])
+
+    payload = {
+        "last_synced_at": "2023-01-01T00:00:00Z",
+        "changes": {
+            "notes": {
+                "created": [
+                    {
+                        "id": "n-root",
+                        "content": "root content"
+                    },
+                    {
+                        "id": "n-followup",
+                        "content": "follow-up content",
+                        "parent_note_id": "n-root"
+                    }
+                ],
+                "updated": [],
+                "deleted": []
+            }
+        }
+    }
+
+    response = client.post(
+        "/sync",
+        json=payload,
+        headers={"Authorization": "Bearer valid-token"}
+    )
+
+    assert response.status_code == 200
+
+    args, _ = mock_query.upsert.call_args
+    upserted_rows = args[0]
+    follow_up_row = next(row for row in upserted_rows if row.get("id") == "n-followup")
+
+    assert follow_up_row["parent_note_id"] == "n-root"
+    assert follow_up_row["user_id"] == "user-123"
+
+
+def test_sync_normalizes_nested_follow_up_parent_to_root(client, mock_supabase):
+    mock_user = MagicMock()
+    mock_user.id = "user-123"
+    mock_supabase.auth.get_user.return_value = MagicMock(user=mock_user)
+
+    mock_query = MagicMock()
+    mock_supabase.table.return_value = mock_query
+    mock_query.upsert.return_value = mock_query
+    mock_query.execute.return_value = MagicMock(data=[])
+
+    mock_query.select.return_value = mock_query
+    mock_query.eq.return_value = mock_query
+    mock_query.gt.return_value = mock_query
+    mock_query.execute.return_value = MagicMock(data=[])
+
+    payload = {
+        "changes": {
+            "notes": {
+                "created": [
+                    {"id": "n-root", "content": "root"},
+                    {"id": "n-mid", "content": "mid", "parent_note_id": "n-root"},
+                    {"id": "n-child", "content": "child", "parent_note_id": "n-mid"}
+                ],
+                "updated": [],
+                "deleted": []
+            }
+        }
+    }
+
+    response = client.post(
+        "/sync",
+        json=payload,
+        headers={"Authorization": "Bearer valid-token"}
+    )
+
+    assert response.status_code == 200
+
+    args, _ = mock_query.upsert.call_args
+    upserted_rows = args[0]
+    child_row = next(row for row in upserted_rows if row.get("id") == "n-child")
+
+    assert child_row["parent_note_id"] == "n-root"
+
 def test_sync_pull_changes(client, mock_supabase):
     mock_user = MagicMock()
     mock_user.id = "user-123"
