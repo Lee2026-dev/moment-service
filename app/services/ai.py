@@ -31,22 +31,7 @@ PROMPT_TEMPLATES = {
                 - Base everything only on the transcript. Do not invent facts.
                 - Keep only high-signal content. Remove filler and repeated content.
                 - Write summary and suggested_title entirely in Chinese.
-                - suggested_title must be specific (8-16 Chinese characters), not generic.
-
-                Summary format:
-                今日概览:
-                • ...
-
-                关键收获:
-                • ...
-
-                明日行动:
-                ○ ...
-
-                Formatting rules:
-                - Use '• ' for facts/reflections.
-                - Use '○ ' for concrete next actions.
-                - If no clear action exists, write: ○ 暂无明确行动项
+                - suggested_title must be specific (6-10 Chinese characters), not generic.
 
                 Transcript:
                 {text}

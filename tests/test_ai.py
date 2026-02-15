@@ -2,12 +2,14 @@ from unittest.mock import MagicMock, patch, call
 from fastapi.testclient import TestClient
 from app.main import app
 from app.dependencies import get_supabase
+from app.services.ai import MODELS
 import pytest
 
 @pytest.fixture
 def mock_supabase():
     mock = MagicMock()
     mock.auth = MagicMock()
+    mock.table = MagicMock()
     return mock
 
 @pytest.fixture
@@ -34,6 +36,18 @@ def test_summarize_success_first_try(client, mock_supabase):
     mock_user = MagicMock()
     mock_user.id = "user-123"
     mock_supabase.auth.get_user.return_value = MagicMock(user=mock_user)
+
+    mock_query_builder = MagicMock()
+    mock_supabase.table.return_value = mock_query_builder
+    mock_query_builder.select.return_value = mock_query_builder
+    mock_query_builder.eq.return_value = mock_query_builder
+    mock_query_builder.limit.return_value = mock_query_builder
+    mock_query_builder.insert.return_value = mock_query_builder
+    mock_query_builder.update.return_value = mock_query_builder
+    mock_query_builder.execute.side_effect = [
+        MagicMock(data=[]),
+        MagicMock(data=[{"user_id": "user-123", "summarize_count": 1}]),
+    ]
     
     with patch("app.services.ai.genai.Client") as MockClient:
         mock_client_instance = MagicMock()
@@ -51,10 +65,13 @@ def test_summarize_success_first_try(client, mock_supabase):
             
             assert response.status_code == 200
             assert response.json()["summary"] == "Summary"
+
+            mock_supabase.table.assert_any_call("user_ai_stats")
+            mock_query_builder.insert.assert_called()
             
             # Verify call arguments
             call_args = mock_client_instance.models.generate_content.call_args
-            assert call_args.kwargs["model"] == "gemini-2.0-flash"
+            assert call_args.kwargs["model"] == MODELS[0]
 
 def test_summarize_fallback(client, mock_supabase):
     mock_user = MagicMock()
@@ -90,8 +107,8 @@ def test_summarize_fallback(client, mock_supabase):
             
             # Check models used
             calls = mock_client_instance.models.generate_content.call_args_list
-            assert calls[0].kwargs["model"] == "gemini-2.0-flash"
-            assert calls[1].kwargs["model"] == "gemini-2.0-flash-lite"
+            assert calls[0].kwargs["model"] == MODELS[0]
+            assert calls[1].kwargs["model"] == MODELS[1]
 
 @pytest.mark.asyncio
 async def test_start_transcription_job_success():

@@ -9,6 +9,7 @@ import pytest
 def mock_supabase():
     mock = MagicMock()
     mock.auth = MagicMock()
+    mock.table = MagicMock()
     return mock
 
 
@@ -91,3 +92,23 @@ def test_refresh_token_invalid(client, mock_supabase):
 
     assert response.status_code == 401
     assert "Invalid refresh token" in response.json()["detail"]
+
+
+def test_get_me_stats(client, mock_supabase):
+    mock_user = MagicMock()
+    mock_user.id = "user-uuid"
+    mock_supabase.auth.get_user.return_value = MagicMock(user=mock_user)
+
+    mock_query_builder = MagicMock()
+    mock_supabase.table.return_value = mock_query_builder
+    mock_query_builder.select.return_value = mock_query_builder
+    mock_query_builder.eq.return_value = mock_query_builder
+    mock_query_builder.limit.return_value = mock_query_builder
+    mock_query_builder.execute.return_value = MagicMock(
+        data=[{"summarize_count": 7}]
+    )
+
+    response = client.get("/auth/me/stats", headers={"Authorization": "Bearer fake-token"})
+
+    assert response.status_code == 200
+    assert response.json()["ai_summarize_count"] == 7

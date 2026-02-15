@@ -31,6 +31,10 @@ class UserProfile(BaseModel):
     created_at: Optional[datetime] = None
 
 
+class UserStats(BaseModel):
+    ai_summarize_count: int = 0
+
+
 class StorageRequest(BaseModel):
     filename: str
     content_type: str

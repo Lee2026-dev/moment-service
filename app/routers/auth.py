@@ -2,7 +2,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from supabase import Client, AuthApiError
 from app.dependencies import get_supabase
-from app.schemas import UserRegister, UserLogin, Token, UserProfile, RefreshTokenRequest
+from app.schemas import (
+    RefreshTokenRequest,
+    Token,
+    UserLogin,
+    UserProfile,
+    UserRegister,
+    UserStats,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 security = HTTPBearer()
@@ -74,6 +81,38 @@ def get_me(
             raise HTTPException(status_code=401, detail=str(e))
         # Default to 401 for unknown auth errors instead of 403, to ensure client logs out
         raise HTTPException(status_code=401, detail=str(e))
+
+
+@router.get("/me/stats", response_model=UserStats)
+def get_me_stats(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    supabase: Client = Depends(get_supabase),
+):
+    token = credentials.credentials
+    try:
+        res = supabase.auth.get_user(token)
+        if not res or not res.user:
+            raise HTTPException(status_code=401, detail="Invalid token")
+
+        stats_res = (
+            supabase.table("user_ai_stats")
+            .select("summarize_count")
+            .eq("user_id", res.user.id)
+            .limit(1)
+            .execute()
+        )
+        rows = stats_res.data or []
+        count = int(rows[0].get("summarize_count") or 0) if rows else 0
+        return UserStats(ai_summarize_count=count)
+    except HTTPException:
+        raise
+    except AuthApiError as e:
+        error_msg = str(e).lower()
+        status_code = 401 if ("expired" in error_msg or "invalid" in error_msg) else e.status
+        raise HTTPException(status_code=status_code, detail=str(e))
+    except Exception as e:
+        print(f"Failed to fetch user stats, falling back to zeros: {e}")
+        return UserStats(ai_summarize_count=0)
 
 
 @router.post("/refresh", response_model=Token)
