@@ -1,6 +1,6 @@
 import os
 import asyncio
-import google.generativeai as genai
+from google import genai
 from dotenv import load_dotenv
 import sys
 
@@ -31,25 +31,27 @@ async def test_local_transcription(audio_path, language="en"):
     JOBS[job_id] = {"status": "processing", "result": None}
 
     try:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        client = genai.Client(api_key=api_key)
         
         print(f"Uploading to Gemini: {audio_path}")
-        audio_file = genai.upload_file(path=audio_path)
+        audio_file = client.files.upload(path=audio_path)
         
         import time
-        while audio_file.state.name == "PROCESSING":
+        while audio_file.state == "PROCESSING":
             print(".", end="", flush=True)
             time.sleep(2)
-            audio_file = genai.get_file(audio_file.name)
+            audio_file = client.files.get(name=audio_file.name)
         
-        if audio_file.state.name == "FAILED":
+        if audio_file.state == "FAILED":
             print("\nError: Audio file processing failed on Gemini")
             return
 
         print(f"\nGenerating transcription...")
         prompt = f"Please transcribe this audio accurately. Language: {language}."
-        response = model.generate_content([prompt, audio_file])
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=[prompt, audio_file],
+        )
         
         print("\n--- Transcription Result ---")
         print(response.text)
