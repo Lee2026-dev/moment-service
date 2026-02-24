@@ -34,10 +34,14 @@ def create_presigned_url(
 
         res = supabase.storage.from_(bucket_name).create_signed_upload_url(file_key)
         
-        if isinstance(res, dict) and "signedURL" in res:
-             upload_url = res["signedURL"]
+        if isinstance(res, dict):
+             upload_url = res.get("signedUrl") or res.get("signed_url") or res.get("signedURL") or str(res)
         else:
              upload_url = str(res)
+        
+        # fallback just in case, though the above should handle it
+        if not upload_url:
+            upload_url = str(res)
         
         return StorageResponse(upload_url=upload_url, file_key=file_key)
 
