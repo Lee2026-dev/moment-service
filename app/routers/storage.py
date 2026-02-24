@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import RedirectResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from supabase import Client
 from app.dependencies import get_supabase
@@ -45,5 +46,28 @@ def create_presigned_url(
         
         return StorageResponse(upload_url=upload_url, file_key=file_key)
 
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/file/{file_key:path}")
+def get_file_url(
+    file_key: str,
+    supabase: Client = Depends(get_supabase)
+):
+    try:
+        bucket_name = "media"
+        # We can create a signed url for download
+        res = supabase.storage.from_(bucket_name).create_signed_url(file_key, 3600)
+        
+        # `res` might be dictionary with "signedURL", test like create_signed_upload_url
+        if isinstance(res, dict):
+            download_url = res.get("signedURL") or res.get("signed_url") or res.get("signedUrl")
+        else:
+            download_url = str(res)
+            
+        if not download_url:
+            raise Exception("Cannot generate signed URL")
+            
+        return RedirectResponse(url=download_url)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
