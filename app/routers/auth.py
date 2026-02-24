@@ -9,6 +9,7 @@ from app.schemas import (
     UserProfile,
     UserRegister,
     UserStats,
+    UserUpdate,
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -34,6 +35,7 @@ def register(user: UserRegister, supabase: Client = Depends(get_supabase)):
 
 @router.post("/login", response_model=Token)
 def login(user: UserLogin, supabase: Client = Depends(get_supabase)):
+    print("request is coming...")
     try:
         res = supabase.auth.sign_in_with_password(
             {"email": user.email, "password": user.password}
@@ -45,8 +47,10 @@ def login(user: UserLogin, supabase: Client = Depends(get_supabase)):
             refresh_token=res.session.refresh_token,
         )
     except AuthApiError as e:
+        print("AuthApiError: ",e)
         raise HTTPException(status_code=e.status, detail=str(e))
     except Exception as e:
+        print("Exception: ",e)
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -65,7 +69,14 @@ def get_me(
         if not user.email:
             raise HTTPException(status_code=400, detail="User has no email")
 
-        return UserProfile(id=user.id, email=user.email, created_at=user.created_at)
+        meta = user.user_metadata or {}
+        return UserProfile(
+            id=user.id, 
+            email=user.email, 
+            created_at=user.created_at,
+            name=meta.get("name"),
+            avatar_url=meta.get("avatar_url")
+        )
     except AuthApiError as e:
         # Check for expired/invalid token in AuthApiError
         # Force 401 if it looks like an auth failure, regardless of what Supabase says (sometimes 400 or 403)
@@ -81,6 +92,48 @@ def get_me(
             raise HTTPException(status_code=401, detail=str(e))
         # Default to 401 for unknown auth errors instead of 403, to ensure client logs out
         raise HTTPException(status_code=401, detail=str(e))
+
+
+@router.patch("/me", response_model=UserProfile)
+def update_me(
+    user_update: UserUpdate,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    supabase_dep: Client = Depends(get_supabase),
+):
+    token = credentials.credentials
+    try:
+        res = supabase_dep.auth.get_user(token)
+        if not res or not res.user:
+            raise HTTPException(status_code=401, detail="Invalid token")
+
+        # Set session using the user's access token so we can update user profile
+        supabase_dep.auth.set_session(access_token=token, refresh_token="")
+        
+        update_data = {}
+        if user_update.name is not None:
+            update_data["name"] = user_update.name
+        if user_update.avatar_url is not None:
+            update_data["avatar_url"] = user_update.avatar_url
+
+        if update_data:
+            supabase_dep.auth.update_user({"data": update_data})
+
+        # Reload user to return updated metadata
+        res = supabase_dep.auth.get_user(token)
+        user = res.user
+        meta = user.user_metadata or {}
+        
+        return UserProfile(
+            id=user.id, 
+            email=user.email, 
+            created_at=user.created_at,
+            name=meta.get("name"),
+            avatar_url=meta.get("avatar_url")
+        )
+    except AuthApiError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/me/stats", response_model=UserStats)

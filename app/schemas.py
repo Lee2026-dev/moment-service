@@ -29,6 +29,12 @@ class UserProfile(BaseModel):
     id: str
     email: str
     created_at: Optional[datetime] = None
+    name: Optional[str] = None
+    avatar_url: Optional[str] = None
+
+class UserUpdate(BaseModel):
+    name: Optional[str] = None
+    avatar_url: Optional[str] = None
 
 
 class UserStats(BaseModel):
