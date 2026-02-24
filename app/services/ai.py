@@ -204,8 +204,6 @@ async def start_transcription_job(job_id: str, audio_file_key: str, language: st
             client = get_google_client()
             
             print(f"Uploading to Gemini: {tmp_path}")
-            # The v1 (google.generativeai) used upload_file. 
-            # The v2 (google-genai) uses client.files.upload
             audio_file = client.files.upload(path=tmp_path)
             
             # Wait for processing
