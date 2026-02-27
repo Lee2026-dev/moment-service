@@ -257,6 +257,8 @@ def sync_data(
                             row["title"] = ""
                         if row.get("transcript") is None:
                             row["transcript"] = ""
+                        if row.get("transcript_segments") is None:
+                            row["transcript_segments"] = ""
                     elif table == "todo_items":
                         if row.get("text") is None:
                             row["text"] = ""
