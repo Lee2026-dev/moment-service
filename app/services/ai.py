@@ -97,28 +97,22 @@ PROMPT_TEMPLATES = {
                 Transcript:
                 {text}
     """,
-    "todo": """You are a task manager. Extract a precise and execution-ready TODO list from the transcript.
-                Hard rules:
-                - Include only actionable tasks. Do not include background narrative as tasks.
-                - Base everything only on the transcript. Do not invent owners, scope, or deadlines.
-                - Split compound actions into separate atomic tasks.
-                - Write summary and suggested_title entirely in Chinese.
-                - suggested_title must be specific (8-16 Chinese characters), not generic.
+    "todo": """
+                你是一位高效的秘书，擅长从冗长的转录文本中提取核心价值。
 
-                Summary format:
-                待办清单:
-                ○ [负责人] 动作 + 交付物 @YYYY-MM-DD
-                • 备注: (only if this note is critical for executing the task)
+                # Task
+                请阅读下方的转录文本（Transcript），先概括核心要点，最后提取待办事项（Todo）。
 
-                Formatting rules:
-                - Every task line must start with '○ '.
-                - Prefer verb-led tasks (e.g., "整理", "确认", "提交", "跟进", "发布").
-                - Use '[待确认]' if the owner is not explicitly mentioned.
-                - Append '@YYYY-MM-DD' only when an exact date is explicitly mentioned.
-                - Use '• 备注:' only for critical execution context, not general summary.
-                - If no actionable task exists, write: ○ 暂无明确行动项
+                # Requirements
+                1. **核心要点**：用精炼的语言总结对话的背景、主要讨论内容及达成的共识。
+                2. **待办事项**：识别文本中所有明确的行动计划或约定，并放在回复的最末尾。
+                3. **Todo 格式**：必须使用 `○` 符号开头。例如：
+                ○ 明天去公园锻炼
+                ○ 5.18号去上海旅游
+                4. **约束**：不要只提供 Todo，必须包含前方的要点总结。
 
-                Transcript:
+                ---
+                以下是转录文本：
                 {text}
     """
 }
